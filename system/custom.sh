@@ -1,6 +1,6 @@
-# just starts controllerd.py
-sleep 10
+sleep 5
+
 ORIGINAL="$(realpath .)"
 cd /userdata/system/tools
-python controllerd.py
+python controllerd.py &
 cd $ORIGINAL

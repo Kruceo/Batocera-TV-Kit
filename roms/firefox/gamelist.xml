@@ -12,9 +12,9 @@
 		<publisher>Atari</publisher>
 		<genre>Shooter / Flying 1st Person</genre>
 		<players>1</players>
-		<playcount>10</playcount>
-		<lastplayed>20260402T162630</lastplayed>
-		<gametime>61800</gametime>
+		<playcount>22</playcount>
+		<lastplayed>20260729T221429</lastplayed>
+		<gametime>269271</gametime>
 		<lang>en</lang>
 	</game>
 	<game>
@@ -29,9 +29,17 @@
 		<publisher>Netflix</publisher>
 		<genre>Streaming</genre>
 		<players>1</players>
-		<playcount>14</playcount>
-		<lastplayed>20260402T133925</lastplayed>
-		<gametime>70314</gametime>
+		<playcount>58</playcount>
+		<lastplayed>20260801T232603</lastplayed>
+		<gametime>1753998</gametime>
+		<lang>en</lang>
+	</game>
+	<game>
+		<path>./max.sh</path>
+		<name>max</name>
+		<playcount>36</playcount>
+		<lastplayed>20260720T200340</lastplayed>
+		<gametime>4703205</gametime>
 		<lang>en</lang>
 	</game>
 	<game>
@@ -44,24 +52,9 @@
 		<publisher>U-Play online</publisher>
 		<genre>Simulation</genre>
 		<players>1</players>
-		<playcount>46</playcount>
-		<lastplayed>20260402T144328</lastplayed>
-		<gametime>189476</gametime>
-		<lang>en</lang>
-	</game>
-        <game>
-		<path>./Max.sh</path>
-		<name>Max</name>
-		<desc></desc>
-		<thumbnail>./images/max.jpg</thumbnail>
-		<releasedate>20160518T000000</releasedate>
-		<developer>U-Play online</developer>
-		<publisher>U-Play online</publisher>
-		<genre>Simulation</genre>
-		<players>1</players>
-		<playcount>46</playcount>
-		<lastplayed>20260402T144328</lastplayed>
-		<gametime>189476</gametime>
+		<playcount>88</playcount>
+		<lastplayed>20260801T220250</lastplayed>
+		<gametime>1845166</gametime>
 		<lang>en</lang>
 	</game>
 </gameList>
