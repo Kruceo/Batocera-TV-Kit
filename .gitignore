@@ -1,0 +1,12 @@
+# Binários compilados
+keyboard/keyboard
+keyboard/keyboard-linux
+keyboard/keyboard-linux-*
+
+# Artefatos de build / runtime
+*.pyc
+__pycache__/
+*.log
+
+# Editores / SO
+.DS_Store

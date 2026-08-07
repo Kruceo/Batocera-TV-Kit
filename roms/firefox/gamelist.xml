@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<gameList>
+	<game>
+		<path>./Firefox.sh</path>
+		<name>Fire Fox (set 1)</name>
+		<desc>Open-source web browser developed by Mozilla. Browse the internet directly from Batocera.</desc>
+		<image>./images/firefox.webp</image>
+		<marquee>./images/firefox.webp</marquee>
+		<thumbnail>./images/firefox.webp</thumbnail>
+		<releasedate>19840101T000000</releasedate>
+		<developer>Atari</developer>
+		<publisher>Atari</publisher>
+		<genre>Shooter / Flying 1st Person</genre>
+		<players>1</players>
+		<playcount>10</playcount>
+		<lastplayed>20260402T162630</lastplayed>
+		<gametime>61800</gametime>
+		<lang>en</lang>
+	</game>
+	<game>
+		<path>./Netflix.sh</path>
+		<name>Netflix</name>
+		<desc>Stream movies, series and documentaries from Netflix's catalog.</desc>
+		<image>./images/netflix.webp</image>
+		<marquee>./images/netflix.webp</marquee>
+		<thumbnail>./images/netflix.webp</thumbnail>
+		<releasedate>20250101T000000</releasedate>
+		<developer>Netflix</developer>
+		<publisher>Netflix</publisher>
+		<genre>Streaming</genre>
+		<players>1</players>
+		<playcount>14</playcount>
+		<lastplayed>20260402T133925</lastplayed>
+		<gametime>70314</gametime>
+		<lang>en</lang>
+	</game>
+	<game>
+		<path>./Youtube.sh</path>
+		<name>Youtube</name>
+		<desc>Watch videos, channels and live streams from the world's largest video platform.</desc>
+		<thumbnail>./images/youtube.png</thumbnail>
+		<releasedate>20160518T000000</releasedate>
+		<developer>U-Play online</developer>
+		<publisher>U-Play online</publisher>
+		<genre>Simulation</genre>
+		<players>1</players>
+		<playcount>46</playcount>
+		<lastplayed>20260402T144328</lastplayed>
+		<gametime>189476</gametime>
+		<lang>en</lang>
+	</game>
+        <game>
+		<path>./Max.sh</path>
+		<name>Max</name>
+		<desc></desc>
+		<thumbnail>./images/max.jpg</thumbnail>
+		<releasedate>20160518T000000</releasedate>
+		<developer>U-Play online</developer>
+		<publisher>U-Play online</publisher>
+		<genre>Simulation</genre>
+		<players>1</players>
+		<playcount>46</playcount>
+		<lastplayed>20260402T144328</lastplayed>
+		<gametime>189476</gametime>
+		<lang>en</lang>
+	</game>
+</gameList>

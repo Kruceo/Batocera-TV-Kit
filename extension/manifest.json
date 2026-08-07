@@ -1,0 +1,23 @@
+{
+    "manifest_version": 2,
+    "name": "Shift+Backspace = ESC",
+    "version": "1.0",
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "yt-esc@local"
+        }
+    },
+    "description": "Maps Shift+Backspace to ESC-like behavior",
+    "content_scripts": [
+        {
+            "matches": [
+                "*://*.youtube.com/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_start",
+            "all_frames": true
+        }
+    ]
+}

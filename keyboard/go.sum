@@ -1,0 +1,8 @@
+github.com/MarinX/keylogger v0.0.0-20240620105846-48ca9d01f566 h1:3uD1lmRbdt8Ho73IcAUTxRQtksuupGMigYG0x+yOi+o=
+github.com/MarinX/keylogger v0.0.0-20240620105846-48ca9d01f566/go.mod h1:aKzZ7D15UvH5LboXkeLmcNi+s/f805vUfB+BfW1fqd4=
+github.com/sashko/go-uinput v0.0.0-20250718151327-faf003f14a20 h1:fA4AOixqSOefnLVy7+DNrcPCPrqog/AalbuhwUpacdI=
+github.com/sashko/go-uinput v0.0.0-20250718151327-faf003f14a20/go.mod h1:5XNvpYRRmWADwhphlimZLWP70oEL1f54E4Guo20fvV4=
+github.com/veandco/go-sdl2 v0.4.40 h1:fZv6wC3zz1Xt167P09gazawnpa0KY5LM7JAvKpX9d/U=
+github.com/veandco/go-sdl2 v0.4.40/go.mod h1:OROqMhHD43nT4/i9crJukyVecjPNYYuCofep6SNiAjY=
+golang.org/x/sys v0.40.0 h1:DBZZqJ2Rkml6QMQsZywtnjnnGvHza6BTfYFWY9kjEWQ=
+golang.org/x/sys v0.40.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=

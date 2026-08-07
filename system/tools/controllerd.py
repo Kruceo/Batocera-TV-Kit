@@ -20,6 +20,7 @@ import configparser
 import signal
 import fcntl
 import glob
+import subprocess
 
 # Configuration paths
 PROFILES_DIR = 'profiles'
@@ -121,6 +122,11 @@ class ControllerDaemon:
         self.acc_y = 0.0
         self.dpad_state = (0, 0)
         self.last_tick = time.monotonic()
+        
+        # Hotkey combo state (PS + Start to close app)
+        self.pressed_buttons = set()
+        self._hotkey_triggered = False
+        self._hotkey_cooldown = 0
         
         # Setup signal handlers
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -240,6 +246,11 @@ class ControllerDaemon:
         fl = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
         
+        # Remember device identity for reconnection
+        self._original_device_path = device_path
+        self._device_name = self.dev.name
+        print(f"Connected to '{self._device_name}' at {device_path}")
+        
         return self.dev
     
     def setup_mouse_params(self):
@@ -345,15 +356,176 @@ class ControllerDaemon:
 
         self.dpad_state = (dpad_x, dpad_y)
     
+    def _device_disconnected(self):
+        """Handle device disconnection."""
+        print("Controller disconnected!")
+        if self.dev is not None:
+            try:
+                self.dev.ungrab()
+            except:
+                pass
+            self.dev = None
+        self._release_all_keys()
+
+    def _release_all_keys(self):
+        """Release all pressed keys and reset stick state."""
+        if self.ui is None:
+            return
+        try:
+            for code in self.bindings.values():
+                self.ui.write(ecodes.EV_KEY, code, 0)
+            for code in [ecodes.KEY_UP, ecodes.KEY_DOWN, ecodes.KEY_LEFT, ecodes.KEY_RIGHT,
+                         ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_SIDE, ecodes.BTN_EXTRA]:
+                self.ui.write(ecodes.EV_KEY, code, 0)
+            self.ui.write(ecodes.EV_REL, ecodes.REL_X, 0)
+            self.ui.write(ecodes.EV_REL, ecodes.REL_Y, 0)
+            self.ui.syn()
+        except:
+            pass
+        self.acc_x = 0.0
+        self.acc_y = 0.0
+        self.dpad_state = (0, 0)
+        # Reset hotkey combo state
+        self.pressed_buttons.clear()
+        self._hotkey_triggered = False
+
+    def _check_hotkey_combo(self, btn_code, pressed):
+        """Check for PS + Start hotkey combo to close app.
+        
+        When both BTN_MODE (PS) and BTN_START are pressed simultaneously,
+        kill the running Firefox process to exit kiosk mode."""
+        if pressed:
+            self.pressed_buttons.add(btn_code)
+        else:
+            self.pressed_buttons.discard(btn_code)
+            # Any release resets the triggered flag
+            self._hotkey_triggered = False
+
+        # Check if combo is active (both PS and Start pressed)
+        if (ecodes.BTN_MODE in self.pressed_buttons and 
+            ecodes.BTN_START in self.pressed_buttons and
+            not self._hotkey_triggered):
+            
+            now = time.monotonic()
+            # Cooldown: prevent multiple triggers within 2 seconds
+            if now - self._hotkey_cooldown < 2.0:
+                return
+            
+            self._hotkey_triggered = True
+            self._hotkey_cooldown = now
+            print("[HOTKEY] PS + Start combo detected — closing app")
+            self._close_app()
+
+    def _close_app(self):
+        """Close the running app by killing Firefox processes."""
+        try:
+            # Release all keys first to prevent stuck inputs
+            self._release_all_keys()
+            
+            # Kill all Firefox processes
+            # This will cause the ROM script's 'wait $FF_PID' to return,
+            # which then sends 'profile disabled'
+            subprocess.Popen(
+                ['pkill', '-f', 'firefox'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            print("[HOTKEY] Sent kill signal to Firefox processes")
+        except Exception as e:
+            print(f"[HOTKEY] Error closing app: {e}")
+
+    def _find_controller_device(self):
+        """Find controller device by scanning /dev/input/ devices.
+        
+        If the original device path still exists, use it.
+        Otherwise, search by device name matching the previously connected device.
+        Returns device path or None."""
+        if not hasattr(self, '_original_device_path') or not self._original_device_path:
+            return None
+
+        # Try original path first
+        if os.path.exists(self._original_device_path):
+            return self._original_device_path
+
+        # Try to find by name
+        target_name = getattr(self, '_device_name', None)
+        if target_name:
+            for path in sorted(glob.glob('/dev/input/event*')):
+                try:
+                    dev = InputDevice(path)
+                    if target_name.lower() in dev.name.lower() or dev.name.lower() in target_name.lower():
+                        dev.close()
+                        print(f"Found controller '{target_name}' at {path}")
+                        return path
+                    dev.close()
+                except:
+                    continue
+
+        # Last resort: find any device with ABS_RX capability (right stick)
+        for path in sorted(glob.glob('/dev/input/event*')):
+            try:
+                dev = InputDevice(path)
+                caps = dev.capabilities()
+                if ecodes.EV_ABS in caps:
+                    abs_codes = [c[0] if isinstance(c, tuple) else c for c in caps[ecodes.EV_ABS]]
+                    if ecodes.ABS_RX in abs_codes and ecodes.ABS_RY in abs_codes:
+                        print(f"Found controller-like device at {path}: {dev.name}")
+                        dev.close()
+                        return path
+                dev.close()
+            except:
+                continue
+
+        return None
+
+    def _try_reconnect(self):
+        """Try to reconnect to the controller."""
+        device_path = self._find_controller_device()
+        if device_path is None:
+            return False
+
+        print(f"Attempting reconnect at {device_path}")
+        try:
+            self.dev = InputDevice(device_path)
+            fd = self.dev.fd
+            fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+            fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+            abs_rx = self.dev.absinfo(ecodes.ABS_RX)
+            abs_ry = self.dev.absinfo(ecodes.ABS_RY)
+
+            self.center_x = (abs_rx.max + abs_rx.min) / 2.0
+            self.center_y = (abs_ry.max + abs_ry.min) / 2.0
+            self.range_x = (abs_rx.max - abs_rx.min) / 2.0
+            self.range_y = (abs_ry.max - abs_ry.min) / 2.0
+
+            self.rx = self.center_x
+            self.ry = self.center_y
+            self.acc_x = 0.0
+            self.acc_y = 0.0
+            self.dpad_state = (0, 0)
+
+            # Reset hotkey combo state for clean reconnection
+            self.pressed_buttons.clear()
+            self._hotkey_triggered = False
+
+            self._device_name = self.dev.name
+            self._original_device_path = device_path
+            print(f"Reconnected to '{self._device_name}' at {device_path}")
+            return True
+        except Exception as e:
+            print(f"Reconnect failed: {e}")
+            self.dev = None
+            return False
+
     def process_events(self):
         """Process all pending input events."""
         try:
-            # Read all available events without blocking
             while True:
                 r, _, _ = select.select([self.dev.fd], [], [], 0)
                 if not r:
                     break
-                    
+
                 for e in self.dev.read():
                     if e.type == ecodes.EV_ABS:
                         if e.code == ecodes.ABS_RX:
@@ -366,21 +538,35 @@ class ControllerDaemon:
                             self.update_dpad_keys(self.dpad_state[0], e.value)
 
                     elif e.type == ecodes.EV_KEY:
-                        # Debug output
                         if self.debug_enabled and e.code in BUTTON_NAMES:
                             btn_name = BUTTON_NAMES[e.code]
                             state = "PRESSED" if e.value == 1 else "RELEASED" if e.value == 0 else "REPEAT"
                             print(f"[DEBUG] Button {btn_name} {state}")
-                        
-                        if e.code in self.bindings:
-                            action_code = self.bindings[e.code]
-                            self.ui.write(ecodes.EV_KEY, action_code, e.value)
-                            self.ui.syn()
-                            
-                            if self.debug_enabled and action_code in BUTTON_NAMES:
-                                print(f"[DEBUG] -> Emitted {BUTTON_NAMES[action_code]}")
+
+                        # Track button state for hotkey combo detection
+                        if e.value in (1, 0):  # press or release (not repeat)
+                            self._check_hotkey_combo(e.code, e.value == 1)
+
+                        # Only map buttons if hotkey combo is not active
+                        if ecodes.BTN_MODE not in self.pressed_buttons or ecodes.BTN_START not in self.pressed_buttons:
+                            if e.code in self.bindings:
+                                action_code = self.bindings[e.code]
+                                self.ui.write(ecodes.EV_KEY, action_code, e.value)
+                                self.ui.syn()
+
+                                if self.debug_enabled and action_code in BUTTON_NAMES:
+                                    print(f"[DEBUG] -> Emitted {BUTTON_NAMES[action_code]}")
         except BlockingIOError:
-            pass  # No more events to read
+            pass
+        except (OSError, IOError):
+            print("Device read error - controller may have disconnected")
+            self._device_disconnected()
+        except Exception as e:
+            if 'Resource temporarily unavailable' in str(e):
+                pass
+            else:
+                print(f"Unexpected error reading device: {e}")
+                self._device_disconnected()
     
     def update_mouse(self):
         """Update mouse movement."""
@@ -587,10 +773,19 @@ class ControllerDaemon:
         
         self.running = True
         
+        self._reconnect_cooldown = 0
         try:
             while self.running:
                 # Read commands from FIFO
                 self.read_commands()
+                
+                # Try to reconnect if device is gone
+                if self.dev is None and self.ui is not None:
+                    now = time.monotonic()
+                    if now - self._reconnect_cooldown >= 3.0:
+                        self._reconnect_cooldown = now
+                        if self._try_reconnect():
+                            self._reconnect_cooldown = 0
                 
                 # Process controller events if device is set up
                 if self.dev is not None and self.ui is not None:

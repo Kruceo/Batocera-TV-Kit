@@ -1,0 +1,1 @@
+docker run -i --rm --init --pull=always mcr.microsoft.com/playwright/mcp@sha256:48cfafeaaf213c618fff8d2e311f33b170dd1eab87a351260cdb9c24a785fc50
