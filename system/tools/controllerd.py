@@ -434,28 +434,47 @@ class ControllerDaemon:
         except Exception as e:
             print(f"[HOTKEY] Error closing app: {e}")
 
+    def _has_right_stick(self, dev):
+        """Return True if the device exposes a right stick (ABS_RX + ABS_RY)."""
+        try:
+            caps = dev.capabilities()
+            if ecodes.EV_ABS not in caps:
+                return False
+            abs_codes = [c[0] if isinstance(c, tuple) else c for c in caps[ecodes.EV_ABS]]
+            return ecodes.ABS_RX in abs_codes and ecodes.ABS_RY in abs_codes
+        except Exception:
+            return False
+
     def _find_controller_device(self):
         """Find controller device by scanning /dev/input/ devices.
-        
-        If the original device path still exists, use it.
-        Otherwise, search by device name matching the previously connected device.
-        Finally, fall back to any device with a right stick (ABS_RX/ABS_RY).
-        Returns device path or None."""
-        # Try original path first
+
+        Prefers a device that actually exposes a right stick (ABS_RX/ABS_RY),
+        which is the strongest signal of a real gamepad. The original path is
+        only trusted if it is still a joystick (some /dev/input slots, like
+        Batocera's evmapy, are reused and not gamepads)."""
+        # Try original path first, but only if it is still a real joystick.
         original = getattr(self, '_original_device_path', None)
         if original and os.path.exists(original):
-            return original
+            try:
+                dev = InputDevice(original)
+                ok = self._has_right_stick(dev)
+                dev.close()
+                if ok:
+                    return original
+            except Exception:
+                pass
 
-        # Try to find by name (only if we know the previously connected name)
+        # Try to find by name (only if we know the previously connected name).
         target_name = getattr(self, '_device_name', None)
         if target_name:
             for path in sorted(glob.glob('/dev/input/event*')):
                 try:
                     dev = InputDevice(path)
                     if target_name.lower() in dev.name.lower() or dev.name.lower() in target_name.lower():
-                        dev.close()
-                        print(f"Found controller '{target_name}' at {path}")
-                        return path
+                        if self._has_right_stick(dev):
+                            dev.close()
+                            print(f"Found controller '{target_name}' at {path}")
+                            return path
                     dev.close()
                 except:
                     continue
@@ -466,13 +485,10 @@ class ControllerDaemon:
         for path in sorted(glob.glob('/dev/input/event*')):
             try:
                 dev = InputDevice(path)
-                caps = dev.capabilities()
-                if ecodes.EV_ABS in caps:
-                    abs_codes = [c[0] if isinstance(c, tuple) else c for c in caps[ecodes.EV_ABS]]
-                    if ecodes.ABS_RX in abs_codes and ecodes.ABS_RY in abs_codes:
-                        print(f"Found controller-like device at {path}: {dev.name}")
-                        dev.close()
-                        return path
+                if self._has_right_stick(dev):
+                    print(f"Found controller-like device at {path}: {dev.name}")
+                    dev.close()
+                    return path
                 dev.close()
             except:
                 continue
