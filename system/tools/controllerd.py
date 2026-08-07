@@ -439,15 +439,14 @@ class ControllerDaemon:
         
         If the original device path still exists, use it.
         Otherwise, search by device name matching the previously connected device.
+        Finally, fall back to any device with a right stick (ABS_RX/ABS_RY).
         Returns device path or None."""
-        if not hasattr(self, '_original_device_path') or not self._original_device_path:
-            return None
-
         # Try original path first
-        if os.path.exists(self._original_device_path):
-            return self._original_device_path
+        original = getattr(self, '_original_device_path', None)
+        if original and os.path.exists(original):
+            return original
 
-        # Try to find by name
+        # Try to find by name (only if we know the previously connected name)
         target_name = getattr(self, '_device_name', None)
         if target_name:
             for path in sorted(glob.glob('/dev/input/event*')):
@@ -461,7 +460,9 @@ class ControllerDaemon:
                 except:
                     continue
 
-        # Last resort: find any device with ABS_RX capability (right stick)
+        # Last resort: find any device with ABS_RX capability (right stick).
+        # This runs even on first boot (no known original path), so the daemon
+        # can self-heal after a restart with the pad already connected.
         for path in sorted(glob.glob('/dev/input/event*')):
             try:
                 dev = InputDevice(path)
@@ -491,16 +492,8 @@ class ControllerDaemon:
             fl = fcntl.fcntl(fd, fcntl.F_GETFL)
             fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
-            abs_rx = self.dev.absinfo(ecodes.ABS_RX)
-            abs_ry = self.dev.absinfo(ecodes.ABS_RY)
+            self._calibrate_sticks()
 
-            self.center_x = (abs_rx.max + abs_rx.min) / 2.0
-            self.center_y = (abs_ry.max + abs_ry.min) / 2.0
-            self.range_x = (abs_rx.max - abs_rx.min) / 2.0
-            self.range_y = (abs_ry.max - abs_ry.min) / 2.0
-
-            self.rx = self.center_x
-            self.ry = self.center_y
             self.acc_x = 0.0
             self.acc_y = 0.0
             self.dpad_state = (0, 0)
@@ -508,6 +501,12 @@ class ControllerDaemon:
             # Reset hotkey combo state for clean reconnection
             self.pressed_buttons.clear()
             self._hotkey_triggered = False
+
+            # Ensure the virtual device exists so events can be emitted.
+            # It may be None if profile load previously failed to reach
+            # setup_uinput (e.g. daemon started without a connected pad).
+            if self.ui is None:
+                self.setup_uinput()
 
             self._device_name = self.dev.name
             self._original_device_path = device_path
@@ -657,6 +656,20 @@ class ControllerDaemon:
         else:
             print(f"Unknown command: {command}")
     
+    def _calibrate_sticks(self):
+        """Calibrate stick center/range from current device ABS values."""
+        abs_rx = self.dev.absinfo(ecodes.ABS_RX)
+        abs_ry = self.dev.absinfo(ecodes.ABS_RY)
+
+        self.center_x = (abs_rx.max + abs_rx.min) / 2.0
+        self.center_y = (abs_ry.max + abs_ry.min) / 2.0
+        self.range_x = (abs_rx.max - abs_rx.min) / 2.0
+        self.range_y = (abs_ry.max - abs_ry.min) / 2.0
+
+        # Initialize stick position
+        self.rx = self.center_x
+        self.ry = self.center_y
+
     def _load_profile(self, profile_name):
         """Load a profile and reinitialize controller."""
         print(f"Loading profile: {profile_name}")
@@ -681,25 +694,19 @@ class ControllerDaemon:
             if self.debug_enabled:
                 print("Debug mode: ENABLED")
             
-            # Setup device (if not already set up)
-            if self.dev is None:
-                self.setup_device()
-                
-                # Get stick calibration
-                abs_rx = self.dev.absinfo(ecodes.ABS_RX)
-                abs_ry = self.dev.absinfo(ecodes.ABS_RY)
-                
-                self.center_x = (abs_rx.max + abs_rx.min) / 2.0
-                self.center_y = (abs_ry.max + abs_ry.min) / 2.0
-                self.range_x = (abs_rx.max - abs_rx.min) / 2.0
-                self.range_y = (abs_ry.max - abs_ry.min) / 2.0
-                
-                # Initialize stick position
-                self.rx = self.center_x
-                self.ry = self.center_y
-            
-            # Setup virtual input device
+            # Always set up the virtual device so hotkeys and mouse can emit,
+            # even if the physical controller is not reachable right now.
             self.setup_uinput()
+            
+            # Setup device (if not already set up). Best effort: if it fails,
+            # keep dev=None so the reconnect loop in run() can find it later.
+            if self.dev is None:
+                try:
+                    self.setup_device()
+                    self._calibrate_sticks()
+                except Exception as e:
+                    print(f"Device not available now: {e}")
+                    self.dev = None
             
             print(f"Profile '{profile_name}' loaded successfully")
             
@@ -728,17 +735,7 @@ class ControllerDaemon:
             self.setup_device()
             
             # Get stick calibration
-            abs_rx = self.dev.absinfo(ecodes.ABS_RX)
-            abs_ry = self.dev.absinfo(ecodes.ABS_RY)
-            
-            self.center_x = (abs_rx.max + abs_rx.min) / 2.0
-            self.center_y = (abs_ry.max + abs_ry.min) / 2.0
-            self.range_x = (abs_rx.max - abs_rx.min) / 2.0
-            self.range_y = (abs_ry.max - abs_ry.min) / 2.0
-            
-            # Initialize stick position
-            self.rx = self.center_x
-            self.ry = self.center_y
+            self._calibrate_sticks()
             
             print(f"Device changed to '{device_path}' successfully")
             
@@ -779,8 +776,11 @@ class ControllerDaemon:
                 # Read commands from FIFO
                 self.read_commands()
                 
-                # Try to reconnect if device is gone
-                if self.dev is None and self.ui is not None:
+                # Try to reconnect if device is gone (or never was connected).
+                # Do NOT require self.ui here: a failed initial device open can
+                # leave ui==None, and we still must attempt to find the pad so
+                # the hotkey combo works after a daemon restart.
+                if self.dev is None:
                     now = time.monotonic()
                     if now - self._reconnect_cooldown >= 3.0:
                         self._reconnect_cooldown = now
