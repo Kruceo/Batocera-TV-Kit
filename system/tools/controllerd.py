@@ -421,16 +421,38 @@ class ControllerDaemon:
         try:
             # Release all keys first to prevent stuck inputs
             self._release_all_keys()
-            
-            # Kill all Firefox processes
-            # This will cause the ROM script's 'wait $FF_PID' to return,
-            # which then sends 'profile disabled'
+
+            # Kill Firefox with a precise match. `pkill -f 'firefox'` would
+            # also match the ROM launcher scripts, whose command line contains
+            # 'firefox' (e.g. /userdata/roms/firefox/Youtube.sh). If the
+            # launcher dies before its `wait $FF_PID` returns, the final
+            # 'profile disabled' cleanup is skipped and the app profile stays
+            # active in EmulationStation (broken controller behavior).
+            #
+            # Use the real binary path first (matches main + child processes).
+            # Fall back to exact process name 'firefox' to cover installs with
+            # a different path; neither pattern matches the bash launchers.
             subprocess.Popen(
-                ['pkill', '-f', 'firefox'],
+                ['pkill', '-f', '/userdata/system/.dev/apps/firefox/firefox'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            subprocess.Popen(
+                ['pkill', '-x', 'firefox'],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
             print("[HOTKEY] Sent kill signal to Firefox processes")
+
+            # Self-heal: reset to the disabled profile right away. Safety net
+            # even if the ROM launcher is missing or was killed by something
+            # that bypassed its cleanup trap. Loading 'disabled' is idempotent,
+            # so a later 'profile disabled' from the launcher's EXIT trap is
+            # harmless (the FIFO handles both commands).
+            try:
+                self._load_profile('disabled')
+            except Exception as e:
+                print(f"[HOTKEY] Self-heal profile reset failed: {e}")
         except Exception as e:
             print(f"[HOTKEY] Error closing app: {e}")
 

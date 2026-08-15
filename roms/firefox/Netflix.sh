@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Always reset the controller profile to "disabled" on exit, even if this
+# launcher is killed/crashes. The EXIT trap alone does not run when the shell
+# is terminated by an untrapped SIGTERM, so we re-signal via TERM/INT/HUP.
+trap 'echo "profile disabled" > /run/controllerd.cmd' EXIT
+trap 'exit' TERM INT HUP
+
 CONTROLLER=$(echo "$SDL_GAMECONTROLLERCONFIG" | cut -d',' -f2)
 CONTROLLER_FILE=$(python /userdata/system/tools/find_controller.py "$CONTROLLER")
 echo "controller $CONTROLLER_FILE" > /run/controllerd.cmd
@@ -19,7 +25,8 @@ EOF
   https://netflix.com &
 FF_PID=$!
 
-# Wait until Firefox dies
+# Wait until Firefox dies. Always exit cleanly afterwards: the profile
+# reset happens via the EXIT trap, and returning 0 keeps EmulationStation
+# from treating a killed Firefox (SIGTERM -> wait status 143) as a crash.
 wait $FF_PID
-
-echo "profile nothing" > /run/controllerd.cmd
+exit 0
